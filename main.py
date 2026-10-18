@@ -12,7 +12,7 @@ BOT_TOKEN = "8830743683:AAEpsT5xrduXGgYzRLTDTHiqgTZAxUVk8cA"
 
 # ==================== НАСТРОЙКИ ====================
 MANAGER_USERNAME = "@financialriskss"
-REVIEWS_URL = "https://t.me/starsukr_reviewsss"  # Канал отзывов
+REVIEWS_URL = "https://t.me/starsukr_reviewsss"
 
 # ID вашей админ-супергруппы
 ADMIN_CHAT_ID = -1005237741624
@@ -61,7 +61,7 @@ def get_main_menu():
         types.KeyboardButton(text="🧑‍💼 Підтримка")
     )
     builder.row(
-        types.KeyboardButton(text="🛡️ Відгуки 10 100+"),
+        types.KeyboardButton(text="🛡️ Відгуки 1"),
         types.KeyboardButton(text="💫 Розрахувати ціну")
     )
     return builder.as_markup(resize_keyboard=True)
@@ -77,7 +77,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         reply_markup=get_main_menu()
     )
 
-# --- МЕНЮ ПОКУПКИ (ПАКЕТЫ + КНОПКА ОТЗЫВОВ) ---
+# --- МЕНЮ ПОКУПКИ (ПАКЕТЫ) ---
 @dp.message(F.text == "⭐️ Замовити Зірки")
 async def process_buy_start(message: types.Message, state: FSMContext):
     await state.clear()
@@ -142,7 +142,7 @@ async def process_buy_amount(message: types.Message, state: FSMContext):
 
 @dp.message(BotStates.buy_username)
 async def process_buy_username(message: types.Message, state: FSMContext):
-    if message.text in ["⭐️ Замовити Зірки", "💵 Продати Зірки", "🎁 Бонуси", "🧑‍💼 Підтримка", "🛡️ Відгуки 10 100+", "💫 Розрахувати ціну"]:
+    if message.text in ["⭐️ Замовити Зірки", "💵 Продати Зірки", "🎁 Бонуси", "🧑‍💼 Підтримка", "🛡️ Відгуки 1", "🛡️ Відгуки 10 100+", "💫 Розрахувати ціну"]:
         await state.clear()
         return
 
@@ -285,7 +285,7 @@ async def process_sell_amount(message: types.Message, state: FSMContext):
 
     amount = int(message.text)
     if amount < 500:
-        await message.answer("Мінімальна сума для продажу — 500 ⭐️. Спробуйте ще раз:")
+        await message.answer("Мінімальне замовлення для продажу — 500 ⭐️. Спробуйте ще раз:")
         return
 
     payout = calculate_sell_payout(amount)
@@ -362,7 +362,8 @@ async def process_support(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(f"Напишіть нашому менеджеру: {MANAGER_USERNAME}")
 
-@dp.message(F.text == "🛡️ Відгуки 10 100+")
+# Поддержка обеих вариаций кнопок отзывов
+@dp.message(F.text.in_(["🛡️ Відгуки 1", "🛡️ Відгуки 10 100+"]))
 async def process_reviews(message: types.Message, state: FSMContext):
     await state.clear()
     kb = InlineKeyboardBuilder()
@@ -371,6 +372,12 @@ async def process_reviews(message: types.Message, state: FSMContext):
 
 async def main():
     logging.basicConfig(level=logging.INFO)
+    
+    # Настройка команд в меню слева от ввода
+    await bot.set_my_commands([
+        types.BotCommand(command="start", description="Головне меню")
+    ])
+    
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
