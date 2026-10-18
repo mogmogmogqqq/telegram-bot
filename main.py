@@ -64,7 +64,7 @@ def get_main_menu():
         types.KeyboardButton(text="🛡️ Відгуки 1"),
         types.KeyboardButton(text="💫 Розрахувати ціну")
     )
-    return builder.as_markup(resize_keyboard=True)
+    return builder.as_markup(resize_keyboard=True, is_persistent=True)
 
 # --- СТАРТ ---
 @dp.message(CommandStart())
@@ -362,7 +362,6 @@ async def process_support(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(f"Напишіть нашому менеджеру: {MANAGER_USERNAME}")
 
-# Поддержка обеих вариаций кнопок отзывов
 @dp.message(F.text.in_(["🛡️ Відгуки 1", "🛡️ Відгуки 10 100+"]))
 async def process_reviews(message: types.Message, state: FSMContext):
     await state.clear()
@@ -372,12 +371,9 @@ async def process_reviews(message: types.Message, state: FSMContext):
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    
-    # Настройка команд в меню слева от ввода
     await bot.set_my_commands([
         types.BotCommand(command="start", description="Головне меню")
     ])
-    
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
