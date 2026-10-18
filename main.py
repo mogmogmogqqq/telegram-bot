@@ -12,26 +12,32 @@ BOT_TOKEN = "8830743683:AAEpsT5xrduXGgYzRLTDTHiqgTZAxUVk8cA"
 
 # ==================== НАСТРОЙКИ ====================
 MANAGER_USERNAME = "@financialriskss"
-REVIEWS_URL = "https://t.me/your_reviews_channel"  # Укажите ссылку на ваш канал с отзывами
+REVIEWS_URL = "https://t.me/starsukr_reviewsss"  # Ссылка на ваш канал отзывов
 
-# ID вашей админ-супергруппы (со значением -100)
+# ID вашей админ-супергруппы
 ADMIN_CHAT_ID = -1005237741624
 
-# Реквизиты оплаты
+# Реквизиты
 PAYMENT_CARD = "4874 0700 3188 2838"
 PAYMENT_NAME = "Данило Жирик Ігорович"
 
-# Расчёт цены покупки Stars в UAH (60 звёзд = 60 грн, 1000 звёзд = 840 грн)
+# Прогрессивный расчёт цен
 def calculate_buy_price(stars: int) -> float:
-    if stars <= 60:
-        rate = 1.00
+    if stars <= 50:
+        rate = 1.00  # 50 звезд = 50 грн
+    elif stars == 100:
+        rate = 0.89  # 100 звезд = 89 грн
+    elif stars == 150:
+        rate = 0.88  # 150 звезд = 132 грн (~0.88 за шт)
+    elif stars == 200:
+        rate = 0.87  # 200 звезд = 174 грн (~0.87 за шт)
     elif stars >= 1000:
-        rate = 0.84
+        rate = 0.84  # 1000 звезд = 840 грн
     else:
-        rate = 1.00 - ((stars - 60) / (1000 - 60)) * (1.00 - 0.84)
+        # Плавная интерполяция для любых других значений
+        rate = 1.00 - ((stars - 50) / (1000 - 50)) * (1.00 - 0.84)
     return round(stars * rate, 2)
 
-# Расчёт выплаты при продаже (0.40 грн / star)
 def calculate_sell_payout(stars: int) -> float:
     return round(stars * 0.40, 2)
 # ===================================================
@@ -72,11 +78,50 @@ async def cmd_start(message: types.Message, state: FSMContext):
         reply_markup=get_main_menu()
     )
 
-# --- ⭐️ Замовити Зірки ---
+# --- МЕНЮ ПОКУПКИ (ПАКЕТЫ) ---
 @dp.message(F.text == "⭐️ Замовити Зірки")
 async def process_buy_start(message: types.Message, state: FSMContext):
-    await state.set_state(BotStates.buy_amount)
-    await message.answer("Введіть кількість Stars, яку хочете придбати (мінімум 50):")
+    kb = InlineKeyboardBuilder()
+    kb.row(types.InlineKeyboardButton(text="⭐️ 50 - 50 грн 🔥", callback_data="pack_50"))
+    kb.row(types.InlineKeyboardButton(text="⭐️ 100 - 89 грн 🔥", callback_data="pack_100"))
+    kb.row(types.InlineKeyboardButton(text="⭐️ 150 - 132 грн 🔥", callback_data="pack_150"))
+    kb.row(types.InlineKeyboardButton(text="⭐️ 200 - 174 грн 🔥", callback_data="pack_200"))
+    kb.row(types.InlineKeyboardButton(text="✏️ Ввести свою суму", callback_data="pack_custom"))
+    kb.row(types.InlineKeyboardButton(text="↩️ Головне меню", callback_data="pack_menu"))
+
+    await message.answer(
+        "✨ **Виберіть потрібну кількість Telegram Stars:**",
+        parse_mode="Markdown",
+        reply_markup=kb.as_markup()
+    )
+
+@dp.callback_query(F.data.startswith("pack_"))
+async def process_buy_pack(call: types.CallbackQuery, state: FSMContext):
+    action = call.data.split("_")[1]
+    
+    if action == "custom":
+        await state.set_state(BotStates.buy_amount)
+        await call.message.answer("Введіть кількість Stars, яку хочете придбати (мінімум 50):")
+        await call.answer()
+        return
+    
+    if action == "menu":
+        await call.message.delete()
+        await call.answer()
+        return
+
+    amount = int(action)
+    price = calculate_buy_price(amount)
+    await state.update_data(buy_amount=amount, buy_price=price)
+    
+    await state.set_state(BotStates.buy_username)
+    await call.message.answer(
+        f"💫 **Напишіть @username**, на який потрібно надіслати TG Stars.\n\n"
+        f"📊 **{amount} ⭐️ — {price} грн**\n\n"
+        f"⚠️ Увага! Якщо ви введете @username неправильно, зірки можуть бути відправлені іншій людині!",
+        parse_mode="Markdown"
+    )
+    await call.answer()
 
 @dp.message(BotStates.buy_amount)
 async def process_buy_amount(message: types.Message, state: FSMContext):
@@ -142,7 +187,7 @@ async def process_i_paid(call: types.CallbackQuery, state: FSMContext):
     await call.message.answer("📸 **Супер, тепер надішліть скріншот повної квитанції про оплату.**")
     await call.answer()
 
-# --- ПРИЕМ КВИТАНЦИИ И ОТПРАВКА В АДМИН-ГРУППУ ---
+# --- ОТПРАВКА ЧЕКА В АДМИН-ГРУППУ ---
 @dp.message(BotStates.receipt_upload, F.photo)
 async def process_receipt(message: types.Message, state: FSMContext):
     order_id = str(uuid.uuid4())
@@ -151,7 +196,6 @@ async def process_receipt(message: types.Message, state: FSMContext):
     price = data.get("buy_price", 0)
     target_username = data.get("target_username", "Не вказано")
 
-    # Ответ покупателю
     await message.answer(
         f"❇️ **Чек прийнято!**\n\n"
         f"📋 **Замовлення:**\n`{order_id}`\n"
@@ -160,14 +204,12 @@ async def process_receipt(message: types.Message, state: FSMContext):
         parse_mode="Markdown"
     )
 
-    # Инлайн-кнопки для группы админов
     admin_kb = InlineKeyboardBuilder()
     admin_kb.row(
         types.InlineKeyboardButton(text="✅ Схвалити", callback_data=f"approve_{order_id}_{amount}_{target_username}_{message.from_user.id}"),
         types.InlineKeyboardButton(text="❌ Відхилити", callback_data=f"reject_{order_id}_{message.from_user.id}")
     )
 
-    # Пересылка картинки и данных заказа в админ-группу
     photo_id = message.photo[-1].file_id
     await bot.send_photo(
         chat_id=ADMIN_CHAT_ID,
@@ -185,7 +227,7 @@ async def process_receipt(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
-# --- ОБРАБОТКА ДЕЙСТВИЙ АДМИНА ---
+# --- ДЕЙСТВИЯ АДМИНА ---
 @dp.callback_query(F.data.startswith("approve_"))
 async def admin_approve(call: types.CallbackQuery):
     _, order_id, amount, target_username, user_id = call.data.split("_")
@@ -229,7 +271,7 @@ async def admin_reject(call: types.CallbackQuery):
     await call.message.edit_caption(caption=call.message.caption + "\n\n❌ **ВІДХИЛЕНО**")
     await call.answer("Замовлення відхилено!")
 
-# --- 💵 Продати Зірки ---
+# --- ПРОДАЖА ---
 @dp.message(F.text == "💵 Продати Зірки")
 async def process_sell_start(message: types.Message, state: FSMContext):
     await state.set_state(BotStates.sell_amount)
@@ -259,7 +301,7 @@ async def process_sell_amount(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
-# --- 💫 Розрахувати ціну ---
+# --- КАЛЬКУЛЯТОР ---
 @dp.message(F.text == "💫 Розрахувати ціну")
 async def process_calc(message: types.Message):
     kb = InlineKeyboardBuilder()
@@ -299,7 +341,7 @@ async def calc_stars_process(message: types.Message, state: FSMContext):
     await message.answer(f"За {stars} ⭐️ сума до оплати: {price} грн")
     await state.clear()
 
-# --- ДОПОЛНИТЕЛЬНЫЕ МЕНЮ ---
+# --- ПРОЧЕЕ ---
 @dp.message(F.text == "🎁 Бонуси")
 async def process_bonuses(message: types.Message):
     bot_info = await bot.get_me()
@@ -323,7 +365,6 @@ async def process_reviews(message: types.Message):
     kb.row(types.InlineKeyboardButton(text="Читати відгуки 💬", url=REVIEWS_URL))
     await message.answer("Наші відгуки доступні за посиланням нижче 👇", reply_markup=kb.as_markup())
 
-# --- ЗАПУСК ---
 async def main():
     logging.basicConfig(level=logging.INFO)
     await dp.start_polling(bot)
