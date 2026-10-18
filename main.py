@@ -12,7 +12,7 @@ BOT_TOKEN = "8830743683:AAEpsT5xrduXGgYzRLTDTHiqgTZAxUVk8cA"
 
 # ==================== НАСТРОЙКИ ====================
 MANAGER_USERNAME = "@financialriskss"
-REVIEWS_URL = "https://t.me/starsukr_reviewsss"  # Ссылка на ваш канал отзывов
+REVIEWS_URL = "https://t.me/starsukr_reviewsss"  # Канал отзывов
 
 # ID вашей админ-супергруппы
 ADMIN_CHAT_ID = -1005237741624
@@ -28,13 +28,12 @@ def calculate_buy_price(stars: int) -> float:
     elif stars == 100:
         rate = 0.89  # 100 звезд = 89 грн
     elif stars == 150:
-        rate = 0.88  # 150 звезд = 132 грн (~0.88 за шт)
+        rate = 0.88  # 150 звезд = 132 грн
     elif stars == 200:
-        rate = 0.87  # 200 звезд = 174 грн (~0.87 за шт)
+        rate = 0.87  # 200 звезд = 174 грн
     elif stars >= 1000:
         rate = 0.84  # 1000 звезд = 840 грн
     else:
-        # Плавная интерполяция для любых других значений
         rate = 1.00 - ((stars - 50) / (1000 - 50)) * (1.00 - 0.84)
     return round(stars * rate, 2)
 
@@ -78,16 +77,17 @@ async def cmd_start(message: types.Message, state: FSMContext):
         reply_markup=get_main_menu()
     )
 
-# --- МЕНЮ ПОКУПКИ (ПАКЕТЫ) ---
+# --- МЕНЮ ПОКУПКИ (ПАКЕТЫ + КНОПКА ОТЗЫВОВ) ---
 @dp.message(F.text == "⭐️ Замовити Зірки")
 async def process_buy_start(message: types.Message, state: FSMContext):
+    await state.clear()
     kb = InlineKeyboardBuilder()
     kb.row(types.InlineKeyboardButton(text="⭐️ 50 - 50 грн 🔥", callback_data="pack_50"))
     kb.row(types.InlineKeyboardButton(text="⭐️ 100 - 89 грн 🔥", callback_data="pack_100"))
     kb.row(types.InlineKeyboardButton(text="⭐️ 150 - 132 грн 🔥", callback_data="pack_150"))
     kb.row(types.InlineKeyboardButton(text="⭐️ 200 - 174 грн 🔥", callback_data="pack_200"))
     kb.row(types.InlineKeyboardButton(text="✏️ Ввести свою суму", callback_data="pack_custom"))
-    kb.row(types.InlineKeyboardButton(text="↩️ Головне меню", callback_data="pack_menu"))
+    kb.row(types.InlineKeyboardButton(text="💬 Читати відгуки", url=REVIEWS_URL))
 
     await message.answer(
         "✨ **Виберіть потрібну кількість Telegram Stars:**",
@@ -102,11 +102,6 @@ async def process_buy_pack(call: types.CallbackQuery, state: FSMContext):
     if action == "custom":
         await state.set_state(BotStates.buy_amount)
         await call.message.answer("Введіть кількість Stars, яку хочете придбати (мінімум 50):")
-        await call.answer()
-        return
-    
-    if action == "menu":
-        await call.message.delete()
         await call.answer()
         return
 
@@ -147,6 +142,10 @@ async def process_buy_amount(message: types.Message, state: FSMContext):
 
 @dp.message(BotStates.buy_username)
 async def process_buy_username(message: types.Message, state: FSMContext):
+    if message.text in ["⭐️ Замовити Зірки", "💵 Продати Зірки", "🎁 Бонуси", "🧑‍💼 Підтримка", "🛡️ Відгуки 10 100+", "💫 Розрахувати ціну"]:
+        await state.clear()
+        return
+
     target_username = message.text
     await state.update_data(target_username=target_username)
 
@@ -274,6 +273,7 @@ async def admin_reject(call: types.CallbackQuery):
 # --- ПРОДАЖА ---
 @dp.message(F.text == "💵 Продати Зірки")
 async def process_sell_start(message: types.Message, state: FSMContext):
+    await state.clear()
     await state.set_state(BotStates.sell_amount)
     await message.answer("📬 **Продати Stars**\n\nВкажіть, будь ласка, скільки зірок ви бажаєте продати.\nМінімальна сума — 500 ⭐️")
 
@@ -303,7 +303,8 @@ async def process_sell_amount(message: types.Message, state: FSMContext):
 
 # --- КАЛЬКУЛЯТОР ---
 @dp.message(F.text == "💫 Розрахувати ціну")
-async def process_calc(message: types.Message):
+async def process_calc(message: types.Message, state: FSMContext):
+    await state.clear()
     kb = InlineKeyboardBuilder()
     kb.row(types.InlineKeyboardButton(text="ГРН 💵 --> Зірки ⭐️", callback_data="calc_grn"))
     kb.row(types.InlineKeyboardButton(text="Зірки ⭐️ --> ГРН 💵", callback_data="calc_stars"))
@@ -343,7 +344,8 @@ async def calc_stars_process(message: types.Message, state: FSMContext):
 
 # --- ПРОЧЕЕ ---
 @dp.message(F.text == "🎁 Бонуси")
-async def process_bonuses(message: types.Message):
+async def process_bonuses(message: types.Message, state: FSMContext):
+    await state.clear()
     bot_info = await bot.get_me()
     ref_link = f"https://t.me/{bot_info.username}?start={message.from_user.id}"
     await message.answer(
@@ -356,11 +358,13 @@ async def process_bonuses(message: types.Message):
     )
 
 @dp.message(F.text == "🧑‍💼 Підтримка")
-async def process_support(message: types.Message):
+async def process_support(message: types.Message, state: FSMContext):
+    await state.clear()
     await message.answer(f"Напишіть нашому менеджеру: {MANAGER_USERNAME}")
 
 @dp.message(F.text == "🛡️ Відгуки 10 100+")
-async def process_reviews(message: types.Message):
+async def process_reviews(message: types.Message, state: FSMContext):
+    await state.clear()
     kb = InlineKeyboardBuilder()
     kb.row(types.InlineKeyboardButton(text="Читати відгуки 💬", url=REVIEWS_URL))
     await message.answer("Наші відгуки доступні за посиланням нижче 👇", reply_markup=kb.as_markup())
