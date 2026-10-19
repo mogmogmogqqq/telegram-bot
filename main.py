@@ -10,7 +10,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
-BOT_TOKEN = "8830743683:AAEpsT5xrduXGgYzRLTDTHiqgTZAxUVk8cA"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
 
 # ==================== НАСТРОЙКИ ====================
 MANAGER_USERNAME = "@financialriskss"
