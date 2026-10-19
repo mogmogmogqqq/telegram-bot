@@ -35,6 +35,15 @@ def init_db():
             referrer_id INTEGER
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            order_id TEXT PRIMARY KEY,
+            user_id INTEGER,
+            amount INTEGER,
+            price REAL,
+            target_username TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -82,6 +91,26 @@ def db_add_bonus_to_referrer(user_id: int, order_amount: int):
             cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (bonus, referrer_id))
             conn.commit()
     conn.close()
+
+def db_save_order(order_id: str, user_id: int, amount: int, price: float, target_username: str):
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO orders (order_id, user_id, amount, price, target_username) VALUES (?, ?, ?, ?, ?)",
+        (order_id, user_id, amount, price, target_username)
+    )
+    conn.commit()
+    conn.close()
+
+def db_get_order(order_id: str):
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, amount, price, target_username FROM orders WHERE order_id = ?", (order_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return {"user_id": row[0], "amount": row[1], "price": row[2], "target_username": row[3]}
+    return None
 
 def calculate_buy_price(stars: int) -> float:
     if stars <= 50:
@@ -307,11 +336,13 @@ async def process_i_paid(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message(BotStates.receipt_upload, F.photo)
 async def process_receipt(message: types.Message, state: FSMContext):
-    order_id = str(uuid.uuid4())
+    order_id = str(uuid.uuid4())[:8] # Короткий ID для безпеки кнопок
     data = await state.get_data()
     amount = data.get("buy_amount", 0)
     price = data.get("buy_price", 0)
     target_username = data.get("target_username", "Не вказано")
+
+    db_save_order(order_id, message.from_user.id, amount, price, target_username)
 
     await message.answer(
         f"❇️ **Чек прийнято!**\n\n"
@@ -323,8 +354,8 @@ async def process_receipt(message: types.Message, state: FSMContext):
 
     admin_kb = InlineKeyboardBuilder()
     admin_kb.row(
-        types.InlineKeyboardButton(text="✅ Схвалити", callback_data=f"approve_{order_id}_{amount}_{target_username}_{message.from_user.id}"),
-        types.InlineKeyboardButton(text="❌ Відхилити", callback_data=f"reject_{order_id}_{message.from_user.id}")
+        types.InlineKeyboardButton(text="✅ Схвалити", callback_data=f"app_{order_id}"),
+        types.InlineKeyboardButton(text="❌ Відхилити", callback_data=f"rej_{order_id}")
     )
 
     photo_id = message.photo[-1].file_id
@@ -344,28 +375,29 @@ async def process_receipt(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
-@dp.callback_query(F.data.startswith("approve_"))
+@dp.callback_query(F.data.startswith("app_"))
 async def admin_approve(call: types.CallbackQuery):
-    parts = call.data.split("_")
-    order_id = parts[1]
-    amount = int(parts[2])
-    target_username = parts[3]
-    user_id = int(parts[4])
+    order_id = call.data.split("_")[1]
+    order = db_get_order(order_id)
     
-    db_add_bonus_to_referrer(user_id, amount)
+    if not order:
+        await call.answer("Замовлення не знайдено в базі!", show_alert=True)
+        return
+
+    db_add_bonus_to_referrer(order["user_id"], order["amount"])
 
     review_kb = InlineKeyboardBuilder()
     review_kb.row(types.InlineKeyboardButton(text="📝 Залишити відгук", url=REVIEWS_URL))
 
     try:
         await bot.send_message(
-            chat_id=user_id,
+            chat_id=order["user_id"],
             text=(
                 f"✅ **Замовлення схвалено!**\n\n"
                 f"📋 **ID:** `{order_id}`\n"
-                f"📦 **Товар:** {amount} зірок\n\n"
+                f"📦 **Товар:** {order['amount']} зірок\n\n"
                 f"🚀 **Ваше замовлення вже обробляється автоматично!**\n\n"
-                f"🎉 **Готово! {amount} зірок надіслано на {target_username}**\n\n"
+                f"🎉 **Готово! {order['amount']} зірок надіслано на {order['target_username']}**\n\n"
                 f"✨ Дякуємо за користування StarsUkre Bot!"
             ),
             parse_mode="Markdown",
@@ -377,18 +409,20 @@ async def admin_approve(call: types.CallbackQuery):
     await call.message.edit_caption(caption=call.message.caption + "\n\n✅ **СХВАЛЕНО**")
     await call.answer("Замовлення схвалено!")
 
-@dp.callback_query(F.data.startswith("reject_"))
+@dp.callback_query(F.data.startswith("rej_"))
 async def admin_reject(call: types.CallbackQuery):
-    _, order_id, user_id = call.data.split("_")
+    order_id = call.data.split("_")[1]
+    order = db_get_order(order_id)
     
-    try:
-        await bot.send_message(
-            chat_id=int(user_id),
-            text=f"❌ **Замовлення `{order_id}` відхилено.**\nЗверніться у підтримку: {MANAGER_USERNAME}",
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        logging.error(f"Error sending message to user: {e}")
+    if order:
+        try:
+            await bot.send_message(
+                chat_id=order["user_id"],
+                text=f"❌ **Замовлення `{order_id}` відхилено.**\nЗверніться у підтримку: {MANAGER_USERNAME}",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            logging.error(f"Error sending message to user: {e}")
 
     await call.message.edit_caption(caption=call.message.caption + "\n\n❌ **ВІДХИЛЕНО**")
     await call.answer("Замовлення відхилено!")
