@@ -14,7 +14,8 @@ BOT_TOKEN = "8830743683:AAEpsT5xrduXGgYzRLTDTHiqgTZAxUVk8cA"
 # ==================== НАСТРОЙКИ ====================
 MANAGER_USERNAME = "@financialriskss"
 REVIEWS_URL = "https://t.me/starsukr_reviewsss"
-RULES_URL = "https://telegra.ph/Pravila-koristuvannya-botom-starsukrbot-05-05"
+RULES_URL = "RULES_URL = "https://telegra.ph/Pravila-koristuvannya-botom-starsukr-bot-10-19-2"
+
 
 ADMIN_CHAT_ID = -1005237741624
 
