@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sqlite3
 import uuid
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
@@ -21,17 +22,81 @@ ADMIN_CHAT_ID = -1005237741624
 PAYMENT_CARD = "4874 0700 3188 2838"
 PAYMENT_NAME = "Данило Жирик Ігорович"
 
+# ==================== БАЗА ДАННЫХ (SQLite) ====================
+def init_db():
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            balance REAL DEFAULT 0,
+            invited_count INTEGER DEFAULT 0,
+            referrer_id INTEGER
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def db_add_user(user_id: int, username: str, referrer_id: int = None):
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+    user = cursor.fetchone()
+    if not user:
+        # Проверяем, существует ли реферер и не пытается ли пользователь пригласить сам себя
+        valid_referrer = None
+        if referrer_id and referrer_id != user_id:
+            cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (referrer_id,))
+            if cursor.fetchone():
+                valid_referrer = referrer_id
+                # Увеличиваем счетчик приглашенных у пригласившего
+                cursor.execute("UPDATE users SET invited_count = invited_count + 1 WHERE user_id = ?", (valid_referrer,))
+        
+        cursor.execute(
+            "INSERT INTO users (user_id, username, referrer_id) VALUES (?, ?, ?)",
+            (user_id, username, valid_referrer)
+        )
+        conn.commit()
+    conn.close()
+
+def db_get_user(user_id: int):
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT balance, invited_count FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return {"balance": row[0], "invited_count": row[1]}
+    return {"balance": 0.0, "invited_count": 0}
+
+def db_add_bonus_to_referrer(user_id: int, order_amount: int):
+    # Начисляем 1% от купленных звезд рефереру
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT referrer_id FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    if row and row[0]:
+        referrer_id = row[0]
+        bonus = round(order_amount * 0.01, 2)
+        if bonus > 0:
+            cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (bonus, referrer_id))
+            conn.commit()
+    conn.close()
+
 def calculate_buy_price(stars: int) -> float:
     if stars <= 50:
-        rate = 1.00  # 50 звезд = 50 грн
+        rate = 1.00  
     elif stars == 100:
-        rate = 0.89  # 100 звезд = 89 грн
+        rate = 0.89  
     elif stars == 150:
-        rate = 0.88  # 150 звезд = 132 грн
+        rate = 0.88  
     elif stars == 200:
-        rate = 0.87  # 200 звезд = 174 грн
+        rate = 0.87  
     elif stars >= 1000:
-        rate = 0.84  # 1000 звезд = 840 грн
+        rate = 0.84  
     else:
         rate = 1.00 - ((stars - 50) / (1000 - 50)) * (1.00 - 0.84)
     return round(stars * rate, 2)
@@ -50,6 +115,7 @@ class BotStates(StatesGroup):
     calc_grn = State()
     calc_stars = State()
     receipt_upload = State()
+    withdraw_amount = State()
 
 def get_main_menu():
     builder = ReplyKeyboardBuilder()
@@ -69,6 +135,15 @@ def get_main_menu():
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
+    
+    # Обработка реферальной ссылки (например, /start 123456789)
+    args = message.text.split()
+    referrer_id = None
+    if len(args) > 1 and args[1].isdigit():
+        referrer_id = int(args[1])
+
+    db_add_user(message.from_user.id, message.from_user.username or "", referrer_id)
+
     await message.answer(
         "⭐ **Вітаємо у StarsUkr!**\n\nЗамовити зірки можна від 50 грн\n\n"
         "💳 Оплата карткою\n⚡ Швидке зарахування\n💬 Підтримка після покупки",
@@ -112,9 +187,10 @@ async def cmd_help(message: types.Message):
         parse_mode="Markdown"
     )
 
-# --- МЕНЮ ПОКУПКИ (ПАКЕТЫ) ---
+# --- МЕНЮ ПОКУПКИ ---
 @dp.message(F.text == "⭐️ Замовити Зірки")
 async def process_buy_start(message: types.Message, state: FSMContext):
+    db_add_user(message.from_user.id, message.from_user.username or "")
     await state.clear()
     kb = InlineKeyboardBuilder()
     kb.row(types.InlineKeyboardButton(text="⭐️ 50 - 50 грн 🔥", callback_data="pack_50"))
@@ -262,14 +338,21 @@ async def process_receipt(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("approve_"))
 async def admin_approve(call: types.CallbackQuery):
-    _, order_id, amount, target_username, user_id = call.data.split("_")
+    parts = call.data.split("_")
+    order_id = parts[1]
+    amount = int(parts[2])
+    target_username = parts[3]
+    user_id = int(parts[4])
     
+    # Начисляем бонус пригласившему (1% от купленных звезд)
+    db_add_bonus_to_referrer(user_id, amount)
+
     review_kb = InlineKeyboardBuilder()
     review_kb.row(types.InlineKeyboardButton(text="📝 Залишити відгук", url=REVIEWS_URL))
 
     try:
         await bot.send_message(
-            chat_id=int(user_id),
+            chat_id=user_id,
             text=(
                 f"✅ **Замовлення схвалено!**\n\n"
                 f"📋 **ID:** `{order_id}`\n"
@@ -305,6 +388,7 @@ async def admin_reject(call: types.CallbackQuery):
 
 @dp.message(F.text == "💵 Продати Зірки")
 async def process_sell_start(message: types.Message, state: FSMContext):
+    db_add_user(message.from_user.id, message.from_user.username or "")
     await state.clear()
     await state.set_state(BotStates.sell_amount)
     await message.answer("📬 **Продати Stars**\n\nВкажіть, будь ласка, скільки зірок ви бажаєте продати.\nМінімальна сума — 500 ⭐️")
@@ -335,6 +419,7 @@ async def process_sell_amount(message: types.Message, state: FSMContext):
 
 @dp.message(F.text == "💫 Розрахувати ціну")
 async def process_calc(message: types.Message, state: FSMContext):
+    db_add_user(message.from_user.id, message.from_user.username or "")
     await state.clear()
     kb = InlineKeyboardBuilder()
     kb.row(types.InlineKeyboardButton(text="ГРН 💵 --> Зірки ⭐️", callback_data="calc_grn"))
@@ -373,27 +458,56 @@ async def calc_stars_process(message: types.Message, state: FSMContext):
     await message.answer(f"За {stars} ⭐️ сума до оплати: {price} грн")
     await state.clear()
 
+# --- БОНУСЫ И РЕФЕРАЛКА ---
 @dp.message(F.text == "🎁 Бонуси")
 async def process_bonuses(message: types.Message, state: FSMContext):
+    db_add_user(message.from_user.id, message.from_user.username or "")
     await state.clear()
+    
+    user_data = db_get_user(message.from_user.id)
     bot_info = await bot.get_me()
     ref_link = f"https://t.me/{bot_info.username}?start={message.from_user.id}"
+
+    kb = InlineKeyboardBuilder()
+    kb.row(types.InlineKeyboardButton(text="📤 Вивести бонуси", callback_data="withdraw_bonus"))
+
     await message.answer(
-        f"Запрошуй друзів, щоб отримати безкоштовні Stars ⭐️\n\n"
-        f"За будь-яку покупку твого друга ти отримаєш **1% ⭐️ собі на баланс**\n\n"
-        f"Запрошено друзів: 0\n"
-        f"Баланс Stars: 0 ⭐️\n\n"
-        f"🔗 **Твоє посилання:**\n{ref_link}",
+        f"🎁 **Реферальна система**\n\n"
+        f"Запрошуй друзів за своїм посиланням і отримуй **1% ⭐️** від кожної їх купівлі на свій бонусний баланс!\n\n"
+        f"👥 Запрошено друзів: **{user_data['invited_count']}**\n"
+        f"⭐️ Баланс Stars: **{user_data['balance']} ⭐️**\n\n"
+        f"🔗 **Твоє реферальне посилання:**\n`{ref_link}`",
+        parse_mode="Markdown",
+        reply_markup=kb.as_markup()
+    )
+
+@dp.callback_query(F.data == "withdraw_bonus")
+async def process_withdraw(call: types.CallbackQuery):
+    user_data = db_get_user(call.from_user.id)
+    balance = user_data["balance"]
+
+    if balance <= 0:
+        await call.answer("На вашому балансі поки немає бонусів для виведення!", show_alert=True)
+        return
+
+    await call.message.answer(
+        f"📤 **Виведення бонусів**\n\n"
+        f"Доступно до виведення: **{balance} ⭐️**\n\n"
+        f"Для виведення бонусів зверніться до менеджера: {MANAGER_USERNAME}\n"
+        f"Напишіть йому ваш ID (`{call.from_user.id}`) та суму зірок на балансі.",
         parse_mode="Markdown"
     )
+    await call.answer()
 
 @dp.message(F.text == "🧑‍💼 Підтримка")
 async def process_support(message: types.Message, state: FSMContext):
+    db_add_user(message.from_user.id, message.from_user.username or "")
     await state.clear()
     await message.answer(f"Напишіть нашому менеджеру: {MANAGER_USERNAME}")
 
 @dp.message(F.text == "🛡️ Відгуки")
 async def process_reviews(message: types.Message, state: FSMContext):
+    db_add_user(message.from_user.id, message.from_user.username or "")
     await state.clear()
     kb = InlineKeyboardBuilder()
     kb.row(types.InlineKeyboardButton(text="Читати відгуки 💬", url=REVIEWS_URL))
