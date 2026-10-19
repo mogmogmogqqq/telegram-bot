@@ -14,8 +14,7 @@ BOT_TOKEN = "8830743683:AAEpsT5xrduXGgYzRLTDTHiqgTZAxUVk8cA"
 # ==================== НАСТРОЙКИ ====================
 MANAGER_USERNAME = "@financialriskss"
 REVIEWS_URL = "https://t.me/starsukr_reviewsss"
-RULES_URL = "RULES_URL = "https://telegra.ph/Pravila-koristuvannya-botom-starsukr-bot-10-19-2"
-
+RULES_URL = "https://telegra.ph/Pravila-koristuvannya-botom-starsukr-bot-10-19-3"
 
 ADMIN_CHAT_ID = -1005237741624
 
@@ -61,7 +60,7 @@ def get_main_menu():
         types.KeyboardButton(text="🧑‍💼 Підтримка")
     )
     builder.row(
-        types.KeyboardButton(text="🛡️ Відгуки 1"),
+        types.KeyboardButton(text="🛡️ Відгуки"),
         types.KeyboardButton(text="💫 Розрахувати ціну")
     )
     return builder.as_markup(resize_keyboard=True)
@@ -178,7 +177,7 @@ async def process_buy_amount(message: types.Message, state: FSMContext):
 
 @dp.message(BotStates.buy_username)
 async def process_buy_username(message: types.Message, state: FSMContext):
-    if message.text in ["⭐️ Замовити Зірки", "💵 Продати Зірки", "🎁 Бонуси", "🧑‍💼 Підтримка", "🛡️ Відгуки 1", "🛡️ Відгуки 10 100+", "💫 Розрахувати ціну"]:
+    if message.text in ["⭐️ Замовити Зірки", "💵 Продати Зірки", "🎁 Бонуси", "🧑‍💼 Підтримка", "🛡️ Відгуки", "💫 Розрахувати ціну"]:
         await state.clear()
         return
 
@@ -393,7 +392,7 @@ async def process_support(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(f"Напишіть нашому менеджеру: {MANAGER_USERNAME}")
 
-@dp.message(F.text.in_(["🛡️ Відгуки 1", "🛡️ Відгуки 10 100+"]))
+@dp.message(F.text == "🛡️ Відгуки")
 async def process_reviews(message: types.Message, state: FSMContext):
     await state.clear()
     kb = InlineKeyboardBuilder()
