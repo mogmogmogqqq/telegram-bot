@@ -15,7 +15,7 @@ BOT_TOKEN = "8830743683:AAEpsT5xrduXGgYzRLTDTHiqgTZAxUVk8cA"
 # ==================== НАСТРОЙКИ ====================
 MANAGER_USERNAME = "@financialriskss"
 REVIEWS_URL = "https://t.me/starsukr_reviewsss"
-RULES_URL = "https://telegra.ph/Pravila-koristuvannya-botom-starsukr-bot-10-19-3"
+RULES_URL = "https://telegra.ph/Pravila-koristuvannya-botom-starsukre-bot-10-19"
 
 ADMIN_CHAT_ID = -1005237741624
 
@@ -46,13 +46,11 @@ def db_add_user(user_id: int, username: str, referrer_id: int = None):
     cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
     user = cursor.fetchone()
     if not user:
-        # Проверяем, существует ли реферер и не пытается ли пользователь пригласить сам себя
         valid_referrer = None
         if referrer_id and referrer_id != user_id:
             cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (referrer_id,))
             if cursor.fetchone():
                 valid_referrer = referrer_id
-                # Увеличиваем счетчик приглашенных у пригласившего
                 cursor.execute("UPDATE users SET invited_count = invited_count + 1 WHERE user_id = ?", (valid_referrer,))
         
         cursor.execute(
@@ -73,7 +71,6 @@ def db_get_user(user_id: int):
     return {"balance": 0.0, "invited_count": 0}
 
 def db_add_bonus_to_referrer(user_id: int, order_amount: int):
-    # Начисляем 1% от купленных звезд рефереру
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
     cursor.execute("SELECT referrer_id FROM users WHERE user_id = ?", (user_id,))
@@ -115,7 +112,6 @@ class BotStates(StatesGroup):
     calc_grn = State()
     calc_stars = State()
     receipt_upload = State()
-    withdraw_amount = State()
 
 def get_main_menu():
     builder = ReplyKeyboardBuilder()
@@ -136,7 +132,6 @@ def get_main_menu():
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     
-    # Обработка реферальной ссылки (например, /start 123456789)
     args = message.text.split()
     referrer_id = None
     if len(args) > 1 and args[1].isdigit():
@@ -145,7 +140,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     db_add_user(message.from_user.id, message.from_user.username or "", referrer_id)
 
     await message.answer(
-        "⭐ **Вітаємо у StarsUkr!**\n\nЗамовити зірки можна від 50 грн\n\n"
+        "⭐ **Вітаємо у StarsUkre!**\n\nЗамовити зірки можна від 50 грн\n\n"
         "💳 Оплата карткою\n⚡ Швидке зарахування\n💬 Підтримка після покупки",
         parse_mode="Markdown",
         reply_markup=get_main_menu()
@@ -154,10 +149,21 @@ async def cmd_start(message: types.Message, state: FSMContext):
 @dp.message(Command("policy"))
 async def cmd_policy(message: types.Message):
     kb = InlineKeyboardBuilder()
-    kb.row(types.InlineKeyboardButton(text="Перейти до правил", url=RULES_URL))
+    kb.row(types.InlineKeyboardButton(text="🔗 Відкрити повну сторінку правил", url=RULES_URL))
     await message.answer(
-        "📌 **Користуючись ботом, ви автоматично погоджуєтесь з Правилами користування**\n"
-        "Будь ласка, ознайомтесь перед покупкою.",
+        "📌 **Правила користування ботом StarsUkre (`@starsukre_bot`)**\n\n"
+        "1. **Загальні положення:** Сервіс надає послуги з купівлі та продажу Telegram Stars (`⭐️`). Використовуючи бот, ви автоматично погоджуєтеся з цими умовами.\n\n"
+        "2. **Купівля зірок:**\n"
+        "• Мінімальне замовлення — **50 ⭐️**.\n"
+        "• Користувач несе повну відповідальність за правильність введення `@username`.\n"
+        "• Після оплати обов'язково надішліть скріншот квитанції.\n"
+        "• Час обробки та зарахування: 15–30 хвилин.\n\n"
+        "3. **Продаж зірок:**\n"
+        "• Мінімальна сума для продажу — **500 ⭐️** через менеджера `@financialriskss`.\n\n"
+        "4. **Реферальна система та бонуси:**\n"
+        "• Запрошуйте друзів та отримуйте **1% ⭐️** від кожної їх покупки на свій баланс.\n\n"
+        "5. **Повернення коштів:**\n"
+        "• Оскільки Stars — цифровий товар надшвидкого зарахування, **після нарахування зірок повернення коштів неможливе**.",
         parse_mode="Markdown",
         reply_markup=kb.as_markup()
     )
@@ -165,12 +171,14 @@ async def cmd_policy(message: types.Message):
 @dp.message(Command("info"))
 async def cmd_info(message: types.Message):
     kb = InlineKeyboardBuilder()
-    kb.row(types.InlineKeyboardButton(text="Угода користувача / Політика повернення", url=RULES_URL))
+    kb.row(types.InlineKeyboardButton(text="🔗 Угода користувача (Telegraph)", url=RULES_URL))
     await message.answer(
-        "ℹ️ **Інформація про сервіс**\n\n"
-        "Умови повернення та користування:\n"
-        "Для довідки по функціоналу бота використовуйте команду:\n"
-        "📖 /help — як купувати, як отримати товар, часті питання",
+        "ℹ️ **Інформація про сервіс StarsUkre**\n\n"
+        "Швидка та безпечна купівля/продаж Telegram Stars в Україні.\n"
+        "💳 Оплата за реквізитами картки\n"
+        "⚡ Автоматизоване нарахування на ваш аккаунт\n"
+        "🎁 Вигідна реферальна система (1% бонусів)\n\n"
+        "📖 Для довідки по функціоналу використовуйте команду /help",
         parse_mode="Markdown",
         reply_markup=kb.as_markup()
     )
@@ -344,7 +352,6 @@ async def admin_approve(call: types.CallbackQuery):
     target_username = parts[3]
     user_id = int(parts[4])
     
-    # Начисляем бонус пригласившему (1% от купленных звезд)
     db_add_bonus_to_referrer(user_id, amount)
 
     review_kb = InlineKeyboardBuilder()
@@ -359,7 +366,7 @@ async def admin_approve(call: types.CallbackQuery):
                 f"📦 **Товар:** {amount} зірок\n\n"
                 f"🚀 **Ваше замовлення вже обробляється автоматично!**\n\n"
                 f"🎉 **Готово! {amount} зірок надіслано на {target_username}**\n\n"
-                f"✨ Дякуємо за користування StarsUkr Bot!"
+                f"✨ Дякуємо за користування StarsUkre Bot!"
             ),
             parse_mode="Markdown",
             reply_markup=review_kb.as_markup()
@@ -465,8 +472,8 @@ async def process_bonuses(message: types.Message, state: FSMContext):
     await state.clear()
     
     user_data = db_get_user(message.from_user.id)
-    bot_info = await bot.get_me()
-    ref_link = f"https://t.me/{bot_info.username}?start={message.from_user.id}"
+    # СТРОГО ВАШ ЮЗЕРНЕЙМ @starsukre_bot
+    ref_link = f"https://t.me/starsukre_bot?start={message.from_user.id}"
 
     kb = InlineKeyboardBuilder()
     kb.row(types.InlineKeyboardButton(text="📤 Вивести бонуси", callback_data="withdraw_bonus"))
@@ -495,7 +502,7 @@ async def process_withdraw(call: types.CallbackQuery):
         f"Доступно до виведення: **{balance} ⭐️**\n\n"
         f"Для виведення бонусів зверніться до менеджера: {MANAGER_USERNAME}\n"
         f"Напишіть йому ваш ID (`{call.from_user.id}`) та суму зірок на балансі.",
-        parse_mode="Markdown"
+        parse_Mode="Markdown"
     )
     await call.answer()
 
