@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import uuid
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -13,15 +14,13 @@ BOT_TOKEN = "8830743683:AAEpsT5xrduXGgYzRLTDTHiqgTZAxUVk8cA"
 # ==================== НАСТРОЙКИ ====================
 MANAGER_USERNAME = "@financialriskss"
 REVIEWS_URL = "https://t.me/starsukr_reviewsss"
+RULES_URL = "https://telegra.ph/Pravila-koristuvannya-botom-starsukrbot-05-05"
 
-# ID вашей админ-супергруппы
 ADMIN_CHAT_ID = -1005237741624
 
-# Реквизиты
 PAYMENT_CARD = "4874 0700 3188 2838"
 PAYMENT_NAME = "Данило Жирик Ігорович"
 
-# Прогрессивный расчёт цен
 def calculate_buy_price(stars: int) -> float:
     if stars <= 50:
         rate = 1.00  # 50 звезд = 50 грн
@@ -64,9 +63,9 @@ def get_main_menu():
         types.KeyboardButton(text="🛡️ Відгуки 1"),
         types.KeyboardButton(text="💫 Розрахувати ціну")
     )
-    return builder.as_markup(resize_keyboard=True, is_persistent=True)
+    return builder.as_markup(resize_keyboard=True)
 
-# --- СТАРТ ---
+# --- СТАРТ И КОМАНДЫ ---
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
@@ -75,6 +74,42 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "💳 Оплата карткою\n⚡ Швидке зарахування\n💬 Підтримка після покупки",
         parse_mode="Markdown",
         reply_markup=get_main_menu()
+    )
+
+@dp.message(Command("policy"))
+async def cmd_policy(message: types.Message):
+    kb = InlineKeyboardBuilder()
+    kb.row(types.InlineKeyboardButton(text="Перейти до правил", url=RULES_URL))
+    await message.answer(
+        "📌 **Користуючись ботом, ви автоматично погоджуєтесь з Правилами користування**\n"
+        "Будь ласка, ознайомтесь перед покупкою.",
+        parse_mode="Markdown",
+        reply_markup=kb.as_markup()
+    )
+
+@dp.message(Command("info"))
+async def cmd_info(message: types.Message):
+    kb = InlineKeyboardBuilder()
+    kb.row(types.InlineKeyboardButton(text="Угода користувача / Політика повернення", url=RULES_URL))
+    await message.answer(
+        "ℹ️ **Інформація про сервіс**\n\n"
+        "Умови повернення та користування:\n"
+        "Для довідки по функціоналу бота використовуйте команду:\n"
+        "📖 /help — як купувати, як отримати товар, часті питання",
+        parse_mode="Markdown",
+        reply_markup=kb.as_markup()
+    )
+
+@dp.message(Command("help"))
+async def cmd_help(message: types.Message):
+    await message.answer(
+        "❓ **Як користуватись ботом**\n\n"
+        "1️⃣ Виберіть кількість Stars, яку хочете придбати.\n"
+        "2️⃣ Введіть @username акаунта, на який будуть нараховані Stars.\n"
+        "3️⃣ Оплатіть замовлення через зручний платіжний метод.\n"
+        "4️⃣ Відправте повну квитанцію на перевірку.\n\n"
+        "✅ Stars нараховуються напряму на ваш Telegram-акаунт — нічого більше робити не потрібно!",
+        parse_mode="Markdown"
     )
 
 # --- МЕНЮ ПОКУПКИ (ПАКЕТЫ) ---
@@ -186,7 +221,6 @@ async def process_i_paid(call: types.CallbackQuery, state: FSMContext):
     await call.message.answer("📸 **Супер, тепер надішліть скріншот повної квитанції про оплату.**")
     await call.answer()
 
-# --- ОТПРАВКА ЧЕКА В АДМИН-ГРУППУ ---
 @dp.message(BotStates.receipt_upload, F.photo)
 async def process_receipt(message: types.Message, state: FSMContext):
     order_id = str(uuid.uuid4())
@@ -226,7 +260,6 @@ async def process_receipt(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
-# --- ДЕЙСТВИЯ АДМИНА ---
 @dp.callback_query(F.data.startswith("approve_"))
 async def admin_approve(call: types.CallbackQuery):
     _, order_id, amount, target_username, user_id = call.data.split("_")
@@ -270,7 +303,6 @@ async def admin_reject(call: types.CallbackQuery):
     await call.message.edit_caption(caption=call.message.caption + "\n\n❌ **ВІДХИЛЕНО**")
     await call.answer("Замовлення відхилено!")
 
-# --- ПРОДАЖА ---
 @dp.message(F.text == "💵 Продати Зірки")
 async def process_sell_start(message: types.Message, state: FSMContext):
     await state.clear()
@@ -301,7 +333,6 @@ async def process_sell_amount(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
-# --- КАЛЬКУЛЯТОР ---
 @dp.message(F.text == "💫 Розрахувати ціну")
 async def process_calc(message: types.Message, state: FSMContext):
     await state.clear()
@@ -342,7 +373,6 @@ async def calc_stars_process(message: types.Message, state: FSMContext):
     await message.answer(f"За {stars} ⭐️ сума до оплати: {price} грн")
     await state.clear()
 
-# --- ПРОЧЕЕ ---
 @dp.message(F.text == "🎁 Бонуси")
 async def process_bonuses(message: types.Message, state: FSMContext):
     await state.clear()
@@ -369,11 +399,31 @@ async def process_reviews(message: types.Message, state: FSMContext):
     kb.row(types.InlineKeyboardButton(text="Читати відгуки 💬", url=REVIEWS_URL))
     await message.answer("Наші відгуки доступні за посиланням нижче 👇", reply_markup=kb.as_markup())
 
+# --- ВЕБ-СЕРВЕР ДЛЯ RENDER ---
+async def handle_ping(request):
+    return web.Response(text="Bot is running!")
+
+async def web_server():
+    app = web.Application()
+    app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 10000)
+    await site.start()
+
 async def main():
     logging.basicConfig(level=logging.INFO)
-    await bot.set_my_commands([
-        types.BotCommand(command="start", description="Головне меню")
-    ])
+    try:
+        await bot.set_my_commands([
+            types.BotCommand(command="start", description="Головне меню"),
+            types.BotCommand(command="policy", description="Правила користування"),
+            types.BotCommand(command="info", description="Інформація"),
+            types.BotCommand(command="help", description="Допомога")
+        ])
+    except Exception as e:
+        logging.error(f"Error setting commands: {e}")
+
+    await web_server()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
