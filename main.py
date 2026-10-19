@@ -17,7 +17,7 @@ MANAGER_USERNAME = "@financialriskss"
 REVIEWS_URL = "https://t.me/starsukr_reviewsss"
 RULES_URL = "https://telegra.ph/Pravila-koristuvannya-botom-starsukre-bot-10-19"
 
-ADMIN_CHAT_ID = -1005237741624
+ADMIN_CHAT_ID = -5237741624
 
 PAYMENT_CARD = "4874 0700 3188 2838"
 PAYMENT_NAME = "Данило Жирик Ігорович"
