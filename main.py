@@ -472,7 +472,6 @@ async def process_bonuses(message: types.Message, state: FSMContext):
     await state.clear()
     
     user_data = db_get_user(message.from_user.id)
-    # СТРОГО ВАШ ЮЗЕРНЕЙМ @starsukre_bot
     ref_link = f"https://t.me/starsukre_bot?start={message.from_user.id}"
 
     kb = InlineKeyboardBuilder()
@@ -502,7 +501,7 @@ async def process_withdraw(call: types.CallbackQuery):
         f"Доступно до виведення: **{balance} ⭐️**\n\n"
         f"Для виведення бонусів зверніться до менеджера: {MANAGER_USERNAME}\n"
         f"Напишіть йому ваш ID (`{call.from_user.id}`) та суму зірок на балансі.",
-        parse_Mode="Markdown"
+        parse_mode="Markdown"
     )
     await call.answer()
 
